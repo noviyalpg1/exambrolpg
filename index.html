@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Excambro Secure Browser</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -93,7 +93,7 @@
             <p class="text-slate-500 mb-8 text-sm">Pilih peran Anda untuk melanjutkan</p>
             
             <div class="space-y-4">
-                <button onclick="switchView('view-student-login')" class="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-semibold transition shadow-md">
+                <button onclick="showStudentLogin()" class="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-semibold transition shadow-md">
                     <i class="fas fa-user-graduate text-xl"></i>
                     Masuk sebagai Siswa
                 </button>
@@ -105,31 +105,66 @@
         </div>
     </div>
 
-    <!-- VIEW 2: STUDENT LOGIN & SCANNER (DIPERBARUI UNTUK KAMERA ASLI) -->
-    <div id="view-student-login" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-800 text-white relative">
-        <button onclick="stopScannerAndGoBack()" class="absolute top-6 left-6 text-slate-300 hover:text-white">
+    <!-- VIEW 2: STUDENT LOGIN (DIPERBARUI DENGAN PILIHAN DROPDOWN/QR & KELAS) -->
+    <div id="view-student-login" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-800 text-white relative overflow-y-auto">
+        <button onclick="stopScannerAndGoBack()" class="absolute top-6 left-6 text-slate-300 hover:text-white z-50">
             <i class="fas fa-arrow-left text-xl"></i>
         </button>
-        <div class="w-full max-w-sm mx-auto flex flex-col items-center text-center">
-            <h2 class="text-2xl font-bold mb-6">Scan QR Ujian</h2>
-            
-            <!-- Tempat Kamera Asli -->
-            <div id="qr-reader-container" class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border-4 border-slate-600 mb-6 shadow-2xl flex items-center justify-center mx-auto">
-                <div id="qr-reader" class="w-full h-full absolute inset-0 z-0"></div>
-                <div id="camera-placeholder" class="absolute inset-0 flex flex-col items-center justify-center opacity-50 bg-slate-900 z-10 pointer-events-none">
-                    <i class="fas fa-qrcode text-6xl text-white mb-2"></i>
-                    <p class="text-xs">Kamera siap diaktifkan</p>
+        <div class="w-full max-w-md mx-auto flex flex-col items-center mt-12 md:mt-0">
+            <div class="bg-slate-900/80 p-6 sm:p-8 rounded-3xl border border-slate-700 w-full backdrop-blur-md shadow-2xl">
+                <div class="flex justify-center mb-4">
+                    <div class="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 text-3xl">
+                        <i class="fas fa-user-edit"></i>
+                    </div>
+                </div>
+                <h2 class="text-2xl font-bold mb-2 text-center">Masuk Ujian</h2>
+                <p class="text-sm text-slate-400 mb-6 text-center">Lengkapi identitas dan pilih metode masuk.</p>
+
+                <!-- Identitas -->
+                <div class="space-y-4 mb-6">
+                    <div>
+                        <label class="text-xs text-slate-400 font-bold uppercase mb-1 block">Nama Lengkap</label>
+                        <input type="text" id="student-name" placeholder="Contoh: Budi Santoso" class="w-full p-3.5 rounded-xl bg-slate-800 text-white border border-slate-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-400 font-bold uppercase mb-1 block">Kelas</label>
+                        <input type="text" id="student-class" placeholder="Contoh: XII IPA 1" class="w-full p-3.5 rounded-xl bg-slate-800 text-white border border-slate-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition">
+                    </div>
+                </div>
+
+                <!-- Metode Tabs -->
+                <div class="flex p-1 bg-slate-800 rounded-xl mb-6 border border-slate-700">
+                    <button id="tab-dropdown" onclick="setLoginMethod('dropdown')" class="flex-1 py-2.5 text-sm font-bold rounded-lg bg-blue-600 text-white shadow transition">Pilih Mapel</button>
+                    <button id="tab-qr" onclick="setLoginMethod('qr')" class="flex-1 py-2.5 text-sm font-bold rounded-lg text-slate-400 hover:text-white transition">Scan QR</button>
+                </div>
+
+                <!-- Content: Dropdown -->
+                <div id="method-dropdown" class="space-y-6">
+                    <div>
+                        <label class="text-xs text-slate-400 font-bold uppercase mb-1 block">Mata Pelajaran</label>
+                        <select id="student-subject-select" class="w-full p-3.5 rounded-xl bg-slate-800 text-white border border-slate-600 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none font-semibold cursor-pointer appearance-none">
+                            <option value="">-- Pilih Mata Pelajaran --</option>
+                        </select>
+                    </div>
+                    <button onclick="startViaDropdown()" class="w-full bg-blue-600 hover:bg-blue-500 text-white p-4 rounded-xl font-bold transition shadow-lg shadow-blue-900/50 flex items-center justify-center gap-2">
+                        <i class="fas fa-sign-in-alt"></i> Mulai Ujian Sekarang
+                    </button>
+                </div>
+
+                <!-- Content: QR -->
+                <div id="method-qr" class="hidden flex flex-col items-center">
+                    <div id="qr-reader-container" class="relative w-full aspect-square max-w-[240px] bg-black rounded-2xl overflow-hidden border-4 border-slate-600 mb-4 shadow-inner flex items-center justify-center mx-auto">
+                        <div id="qr-reader" class="w-full h-full absolute inset-0 z-0"></div>
+                        <div id="camera-placeholder" class="absolute inset-0 flex flex-col items-center justify-center opacity-50 bg-slate-900 z-10 pointer-events-none transition-opacity duration-300">
+                            <i class="fas fa-qrcode text-5xl text-white mb-2"></i>
+                        </div>
+                    </div>
+                    <button id="btn-start-scan" onclick="startRealScanner()" class="w-full bg-slate-700 hover:bg-slate-600 text-white p-3.5 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2">
+                        <i class="fas fa-camera"></i> Aktifkan Kamera Scanner
+                    </button>
+                    <p id="scan-instruction" class="text-xs text-slate-400 mt-4 text-center">Pastikan identitas sudah terisi sebelum scan.</p>
                 </div>
             </div>
-
-            <p id="scan-instruction" class="text-sm text-slate-400 mb-6">Masukkan nama Anda lalu aktifkan kamera.</p>
-
-            <!-- Input Nama -->
-            <input type="text" id="student-name" placeholder="Masukkan Nama Lengkap" class="w-full p-4 rounded-xl bg-slate-700 text-white border border-slate-600 mb-4 focus:ring-2 focus:ring-blue-500 outline-none text-center">
-
-            <button id="btn-start-scan" onclick="startRealScanner()" class="w-full bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2">
-                <i class="fas fa-camera"></i> Aktifkan Kamera & Scan
-            </button>
         </div>
     </div>
 
@@ -264,19 +299,67 @@
                     </div>
                 </div>
 
-                <!-- Tambahan Generator QR Ujian -->
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row items-center gap-6">
-                    <div class="text-center md:text-left flex-1">
-                        <h2 class="font-bold text-slate-800 text-lg mb-2"><i class="fas fa-qrcode text-blue-500 mr-2"></i> Generator QR Ujian</h2>
-                        <p class="text-sm text-slate-500 mb-4">Buat QR Code dari link soal (Google Form, dll). Siswa wajib scan kode ini dari perangkat mereka untuk memulai ujian yang benar.</p>
-                        <div class="flex flex-col sm:flex-row gap-2">
-                           <input type="url" id="exam-url-input" value="https://docs.google.com/forms/d/e/1FAIpQLSd9O-DofR6tS2zQd7A-2_G4lMlwzE1Q0rT_fJ6O1D0gE7R3qw/viewform?embedded=true" class="flex-1 p-3 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan Link Google Form / Soal Ujian">
-                           <button onclick="generateQR()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-sm font-bold transition whitespace-nowrap">Generate QR</button>
+                <!-- Manajemen Ujian & Akses (Pengganti Generator Sederhana) -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col lg:flex-row gap-6">
+                    <div class="flex-1">
+                        <h2 class="font-bold text-slate-800 text-lg mb-2"><i class="fas fa-cogs text-blue-500 mr-2"></i> Manajemen Ujian & Akses</h2>
+                        <p class="text-sm text-slate-500 mb-6">Kelola link soal ujian. Aktifkan akses agar siswa dapat langsung memilih mapel dari halaman depan, atau biarkan mati jika ingin menggunakan mode QR Code saja.</p>
+                        
+                        <div class="space-y-5">
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase mb-1 block">Mata Pelajaran</label>
+                                <select id="subject-select" onchange="loadSubjectSettings()" class="w-full p-3 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 font-semibold text-slate-700">
+                                    <option value="">-- Pilih Mata Pelajaran --</option>
+                                    <option value="Pendidikan Agama">Pendidikan Agama</option>
+                                    <option value="Pendidikan Pancasila">Pendidikan Pancasila</option>
+                                    <option value="Bahasa Indonesia">Bahasa Indonesia</option>
+                                    <option value="Matematika">Matematika</option>
+                                    <option value="IPA">IPA</option>
+                                    <option value="IPS">IPS</option>
+                                    <option value="Bahasa Inggris">Bahasa Inggris</option>
+                                    <option value="Pendidikan Jasmani (PJOK)">Pendidikan Jasmani (PJOK)</option>
+                                    <option value="Bahasa Lampung">Bahasa Lampung</option>
+                                    <option value="PAK">PAK (Pendidikan Anti Korupsi)</option>
+                                    <option value="Seni Budaya">Seni Budaya</option>
+                                    <option value="Informatika">Informatika</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="text-xs font-bold text-slate-500 uppercase mb-1 block">Link Soal (Google Form, dll)</label>
+                                <input type="url" id="exam-url-input" class="w-full p-3 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan Link Soal Ujian">
+                            </div>
+
+                            <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                <div class="pr-4">
+                                    <h4 class="font-bold text-sm text-slate-700">Akses Pilihan Langsung</h4>
+                                    <p class="text-xs text-slate-500 mt-1">Jika diaktifkan, siswa dapat langsung memilih dan mengerjakan mapel ini di menu depan tanpa scan QR.</p>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                                  <input type="checkbox" id="subject-active-toggle" class="sr-only peer">
+                                  <div class="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+
+                            <button onclick="saveSubjectSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-3.5 rounded-xl text-sm font-bold transition shadow-md flex justify-center items-center gap-2">
+                                <i class="fas fa-save"></i> Simpan Pengaturan
+                            </button>
                         </div>
                     </div>
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex-shrink-0 flex flex-col items-center">
-                        <img id="generated-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://docs.google.com/forms/d/e/1FAIpQLSd9O-DofR6tS2zQd7A-2_G4lMlwzE1Q0rT_fJ6O1D0gE7R3qw/viewform?embedded=true" alt="QR Ujian" class="w-32 h-32 md:w-40 md:h-40 shadow-sm rounded-lg bg-white p-2">
-                        <span class="text-xs text-slate-400 mt-2 font-semibold">Tampilkan ke Siswa</span>
+
+                    <!-- Preview QR & Status -->
+                    <div class="bg-slate-50 p-6 rounded-xl border border-slate-200 w-full lg:w-72 flex flex-col items-center justify-center relative overflow-hidden">
+                        <div class="relative z-10">
+                            <img id="generated-qr" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=" alt="QR Ujian" class="w-40 h-40 shadow-sm rounded-xl bg-white p-2 border border-slate-200 object-contain mx-auto">
+                            <div id="qr-status-badge" class="absolute -top-3 -right-3 bg-slate-400 text-white text-[10px] font-bold px-2 py-1 rounded-full border-2 border-white shadow-sm">KOSONG</div>
+                        </div>
+                        <span id="qr-subject-label" class="text-sm text-blue-700 mt-5 font-bold text-center px-4 py-1.5 bg-blue-100 rounded-full w-full truncate border border-blue-200 z-10">Pilih Mapel</span>
+                        <span class="text-[10px] text-slate-400 mt-2 font-semibold uppercase tracking-wider text-center z-10">QR Code Alternatif</span>
+                        
+                        <!-- Dekorasi background -->
+                        <div class="absolute -bottom-8 -right-8 text-slate-200 text-9xl z-0 opacity-50 pointer-events-none">
+                            <i class="fas fa-qrcode"></i>
+                        </div>
                     </div>
                 </div>
 
@@ -304,13 +387,6 @@
                         </table>
                     </div>
                 </div>
-                
-                <div class="mt-4 p-4 bg-blue-50 text-blue-800 rounded-lg text-sm flex gap-3 items-start border border-blue-200">
-                    <i class="fas fa-info-circle mt-0.5"></i>
-                    <div>
-                        <strong>Cara Uji Coba:</strong> Buka prototipe ini di <strong>tab atau perangkat lain</strong>, lalu masuk sebagai "Siswa". Coba minimize tab siswa atau klik kanan. Data di dasbor ini akan terupdate seketika (menggunakan komunikasi antar-tab <i>localStorage</i>).
-                    </div>
-                </div>
             </div>
         </main>
     </div>
@@ -318,15 +394,18 @@
     <script>
         // --- GLOBAL STATE ---
         let currentStudentId = null;
+        let currentStudentName = "";
+        let currentStudentClass = "";
         let isExamActive = false;
         let violations = 0;
         let examTimer = 0;
         let timerInterval = null;
         let isFocusLost = false;
-        let html5QrCode = null; // Tambahan untuk menyimpan instance scanner
+        let html5QrCode = null;
 
-        // Kunci local storage untuk simulasi database realtime
+        // Kunci local storage
         const DB_KEY = 'excambro_students_db';
+        const SUBJECTS_DB_KEY = 'excambro_subjects_db';
 
         // --- NAVIGATION & UI ---
         function switchView(viewId) {
@@ -334,83 +413,168 @@
             document.getElementById(viewId).classList.remove('hidden');
         }
 
+        // Dipanggil saat klik "Masuk sebagai Siswa"
+        function showStudentLogin() {
+            // Bersihkan input sebelumnya
+            document.getElementById('student-name').value = '';
+            document.getElementById('student-class').value = '';
+            
+            // Render dropdown mapel & set metode default
+            loadActiveSubjectsForStudent();
+            setLoginMethod('dropdown');
+            
+            switchView('view-student-login');
+        }
+
+        // Toggle antara Dropdown Mapel vs Scan QR
+        function setLoginMethod(method) {
+            const btnDropdown = document.getElementById('tab-dropdown');
+            const btnQr = document.getElementById('tab-qr');
+            const divDropdown = document.getElementById('method-dropdown');
+            const divQr = document.getElementById('method-qr');
+
+            if (method === 'dropdown') {
+                btnDropdown.className = "flex-1 py-2.5 text-sm font-bold rounded-lg bg-blue-600 text-white shadow transition";
+                btnQr.className = "flex-1 py-2.5 text-sm font-bold rounded-lg text-slate-400 hover:text-white transition";
+                divDropdown.classList.remove('hidden');
+                divQr.classList.add('hidden');
+                
+                // Matikan kamera jika pindah ke mode dropdown
+                if (html5QrCode) {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        html5QrCode = null;
+                        document.getElementById('camera-placeholder').classList.remove('hidden');
+                        document.getElementById('btn-start-scan').classList.remove('hidden');
+                    }).catch(e => console.log(e));
+                }
+            } else {
+                btnQr.className = "flex-1 py-2.5 text-sm font-bold rounded-lg bg-blue-600 text-white shadow transition";
+                btnDropdown.className = "flex-1 py-2.5 text-sm font-bold rounded-lg text-slate-400 hover:text-white transition";
+                divQr.classList.remove('hidden');
+                divQr.classList.add('flex');
+                divDropdown.classList.add('hidden');
+            }
+        }
+
         function stopScannerAndGoBack() {
             if (html5QrCode) {
                 html5QrCode.stop().then(() => {
                     html5QrCode.clear();
                     html5QrCode = null;
-                }).catch(err => console.error("Gagal menghentikan scanner", err));
+                }).catch(err => console.error(err));
             }
-            // Kembalikan UI scanner ke awal
+            // Reset tampilan kamera scanner
             document.getElementById('camera-placeholder').classList.remove('hidden');
             document.getElementById('btn-start-scan').classList.remove('hidden');
-            document.getElementById('student-name').classList.remove('hidden');
-            document.getElementById('scan-instruction').innerText = "Masukkan nama Anda lalu aktifkan kamera.";
             
             switchView('view-role');
         }
 
-        // --- STUDENT FLOW (DIPERBARUI) ---
-        function startRealScanner() {
-            const nameInput = document.getElementById('student-name').value.trim();
-            if (!nameInput) {
-                alert("Silakan masukkan nama terlebih dahulu.");
+        // --- STUDENT LOGIN FLOW ---
+        function validateStudentIdentity() {
+            const name = document.getElementById('student-name').value.trim();
+            const stdClass = document.getElementById('student-class').value.trim();
+            if (!name || !stdClass) {
+                alert("Harap masukkan Nama Lengkap dan Kelas Anda terlebih dahulu!");
+                return false;
+            }
+            currentStudentName = name;
+            currentStudentClass = stdClass;
+            return true;
+        }
+
+        // Load hanya Mapel yang diset 'Aktif' oleh Guru
+        function loadActiveSubjectsForStudent() {
+            const db = getSubjectsDB();
+            const select = document.getElementById('student-subject-select');
+            select.innerHTML = '<option value="">-- Pilih Mata Pelajaran --</option>';
+            
+            let hasActive = false;
+            for (const [subject, data] of Object.entries(db)) {
+                if (data.active) {
+                    hasActive = true;
+                    const opt = document.createElement('option');
+                    opt.value = data.url;
+                    opt.textContent = subject;
+                    select.appendChild(opt);
+                }
+            }
+            if (!hasActive) {
+                select.innerHTML = '<option value="">-- Belum ada akses ujian langsung yang dibuka --</option>';
+            }
+        }
+
+        // Opsi 1: Mulai via Dropdown Pilihan
+        function startViaDropdown() {
+            if (!validateStudentIdentity()) return;
+            
+            const url = document.getElementById('student-subject-select').value;
+            if (!url) {
+                alert("Silakan pilih Mata Pelajaran yang tersedia!");
                 return;
             }
 
-            // Sembunyikan form nama & tombol, tampilkan live camera
+            prepareExamSession(url);
+        }
+
+        // Opsi 2: Mulai via QR Scan
+        function startRealScanner() {
+            if (!validateStudentIdentity()) return;
+
             document.getElementById('camera-placeholder').classList.add('hidden');
             document.getElementById('btn-start-scan').classList.add('hidden');
-            document.getElementById('student-name').classList.add('hidden');
-            document.getElementById('scan-instruction').innerText = "Arahkan kamera ke QR Code. Pastikan izin kamera diberikan saat diminta browser.";
+            document.getElementById('scan-instruction').innerText = "Arahkan kamera ke QR Code.";
 
-            // Inisialisasi Kamera Belakang (Environment Camera)
             html5QrCode = new Html5Qrcode("qr-reader");
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
             
-            // Ubah constraint agar bisa jalan di Laptop (fallback ke kamera yg ada jika back camera tidak ada)
             html5QrCode.start({ facingMode: { ideal: "environment" } }, config, 
                 (decodedText, decodedResult) => {
-                    // KETIKA QR BERHASIL DISCAN:
-                    
-                    // 1. Matikan kamera
                     html5QrCode.stop().then(() => {
                         html5QrCode.clear();
                         html5QrCode = null;
                     });
 
-                    // 2. Lanjutkan alur siswa
-                    currentStudentId = 'STD-' + Math.floor(1000 + Math.random() * 9000);
-                    document.getElementById('display-student-name').innerText = nameInput;
-                    
-                    updateStudentStatus(currentStudentId, nameInput, 'Menunggu', 0);
-                    
-                    // 3. Masukkan link hasil scan QR ke dalam Iframe Ujian!
                     if(decodedText.startsWith('http')) {
-                        document.getElementById('exam-iframe').src = decodedText;
+                        prepareExamSession(decodedText);
+                    } else {
+                        alert("QR Code tidak valid. Harus berisi Link URL.");
+                        stopScannerAndGoBack();
                     }
-                    
-                    switchView('view-system-check');
-                    runSystemCheck();
                 },
-                (errorMessage) => {
-                    // Abaikan pesan error saat belum ada QR yang terdeteksi
-                }
+                (errorMessage) => {}
             ).catch((err) => {
-                console.error(err);
-                alert("Kamera tidak dapat diakses. Pastikan browser memiliki izin kamera.");
-                stopScannerAndGoBack();
+                alert("Kamera gagal diakses. Pastikan Anda telah memberi izin pada browser.");
+                document.getElementById('camera-placeholder').classList.remove('hidden');
+                document.getElementById('btn-start-scan').classList.remove('hidden');
             });
+        }
+
+        function prepareExamSession(examUrl) {
+            currentStudentId = 'STD-' + Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('display-student-name').innerText = `${currentStudentName} (${currentStudentClass})`;
+            document.getElementById('exam-iframe').src = examUrl;
+            
+            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Menunggu', 0);
+            
+            switchView('view-system-check');
+            runSystemCheck();
         }
 
         function runSystemCheck() {
             const checks = ['check-root', 'check-usb', 'check-mirror', 'check-overlay'];
             let progress = 0;
             const bar = document.getElementById('progress-bar');
+            bar.style.width = '0%'; // reset
             
             checks.forEach((id, index) => {
+                const el = document.getElementById(id);
+                el.innerText = 'Memeriksa...';
+                el.classList.add('text-yellow-400');
+                el.classList.remove('text-green-400');
+
                 setTimeout(() => {
-                    const el = document.getElementById(id);
                     el.innerText = 'Aman';
                     el.classList.remove('text-yellow-400');
                     el.classList.add('text-green-400');
@@ -422,33 +586,41 @@
                         const btn = document.getElementById('btn-start-exam');
                         btn.disabled = false;
                         btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                        updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Siap Ujian', 0);
+                        updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Siap Ujian', 0);
                     }
                 }, 800 * (index + 1));
             });
         }
 
         async function enterExamMode() {
-            // Simulasi Request Fullscreen (Lock Task Mode)
             try {
-                if (document.documentElement.requestFullscreen) {
-                    await document.documentElement.requestFullscreen();
+                const elem = document.documentElement;
+                if (elem.requestFullscreen) {
+                    await elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) { /* Safari / Chrome iOS */
+                    await elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) { /* IE11 / Edge lama */
+                    await elem.msRequestFullscreen();
+                } else if (elem.mozRequestFullScreen) { /* Firefox */
+                    await elem.mozRequestFullScreen();
                 }
             } catch (e) {
-                console.log("Fullscreen direject browser, melanjutkan ujian.");
+                console.log("Fullscreen otomatis ditolak browser, namun ujian tetap dilanjutkan.");
             }
 
             switchView('view-exam');
             isExamActive = true;
             violations = 0;
+            document.getElementById('display-violations').innerText = `${violations} / 3`;
             startTimer();
             setupAntiCheat();
             
-            updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Sedang Ujian', 0);
+            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Sedang Ujian', 0);
         }
 
         function startTimer() {
             examTimer = 0;
+            clearInterval(timerInterval);
             timerInterval = setInterval(() => {
                 examTimer++;
                 const hrs = String(Math.floor(examTimer / 3600)).padStart(2, '0');
@@ -462,31 +634,31 @@
             isExamActive = false;
             clearInterval(timerInterval);
             removeAntiCheat();
-            if (document.exitFullscreen && document.fullscreenElement) {
-                document.exitFullscreen();
+            
+            // Keluar dari mode fullscreen dengan dukungan lintas browser
+            if (document.exitFullscreen) {
+                document.exitFullscreen().catch(err => console.log(err));
+            } else if (document.webkitExitFullscreen) { /* Safari */
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) { /* IE11 */
+                document.msExitFullscreen();
+            } else if (document.mozCancelFullScreen) { /* Firefox */
+                document.mozCancelFullScreen();
             }
-            updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Selesai', violations);
+            
+            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Selesai', violations);
             alert("Ujian berhasil disubmit.");
             switchView('view-role');
         }
 
-        // --- ANTI-CHEAT ENGINE (SIMULATED) ---
+        // --- ANTI-CHEAT ENGINE ---
         function setupAntiCheat() {
-            // 1. Deteksi Ganti Tab / Keluar Aplikasi (Visibility)
             document.addEventListener("visibilitychange", handleVisibilityChange);
-            
-            // 2. Deteksi Kehilangan Fokus (Blur Window)
             window.addEventListener("blur", handleWindowBlur);
             window.addEventListener("focus", handleWindowFocus);
-
-            // 3. Blokir Klik Kanan
             document.addEventListener("contextmenu", preventDefaultAction);
-
-            // 4. Blokir Copy/Paste
             document.addEventListener("copy", preventDefaultAction);
             document.addEventListener("paste", preventDefaultAction);
-
-            // 5. Blokir Keyboard Shortcuts (F12, dll di web)
             document.addEventListener("keydown", handleKeydown);
         }
 
@@ -503,15 +675,14 @@
         function preventDefaultAction(e) {
             if(!isExamActive) return;
             e.preventDefault();
-            triggerViolation("Mencoba menggunakan fitur yang dilarang (Klik Kanan/Copy/Paste).");
+            triggerViolation("Mencoba menggunakan fitur terlarang (Klik Kanan/Copy/Paste).");
         }
 
         function handleKeydown(e) {
             if(!isExamActive) return;
-            // Blokir F12, Ctrl+Shift+I, Ctrl+C, Ctrl+V, Alt+Tab (browser limit)
             if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I') || (e.ctrlKey && (e.key === 'c' || e.key === 'v'))) {
                 e.preventDefault();
-                triggerViolation("Mencoba menggunakan shortcut keyboard yang dilarang.");
+                triggerViolation("Mencoba menggunakan shortcut keyboard terlarang.");
             }
         }
 
@@ -525,11 +696,9 @@
             if (!isExamActive) return;
             isFocusLost = true;
             document.getElementById('focus-warning').classList.remove('hidden');
-            // Menunggu sebentar sebelum menganggap pelanggaran, karena klik di iframe terkadang memicu blur
             setTimeout(() => {
                 if (isFocusLost && isExamActive && document.visibilityState !== 'hidden') {
-                    // Hanya warning visual ringan untuk fokus hilang (tidak masuk strike keras)
-                    console.log("Fokus mungkin di iframe.");
+                    console.log("Fokus mungkin hilang karena iframe/popup internal.");
                 }
             }, 1000);
         }
@@ -544,29 +713,22 @@
             
             violations++;
             document.getElementById('display-violations').innerText = `${violations} / 3`;
-            
-            // Update Database (Realtime Sync to Teacher)
-            updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Melanggar', violations, reason);
-
-            // Audio Peringatan menggunakan TTS bawaan browser
+            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Melanggar', violations, reason);
             speakPeringatan(violations);
 
             if (violations >= 3) {
-                // Lock down
                 isExamActive = false;
                 clearInterval(timerInterval);
                 document.getElementById('locked-overlay').classList.remove('hidden');
                 document.getElementById('locked-overlay').classList.add('flex');
-                updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Dikunci', violations, "Maksimal pelanggaran tercapai.");
+                updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Dikunci', violations, "Maksimal pelanggaran tercapai.");
             } else {
-                // Show Warning Popup
                 document.getElementById('warning-count').innerText = violations;
                 document.getElementById('warning-text').innerText = reason;
                 const overlay = document.getElementById('warning-overlay');
                 overlay.classList.remove('hidden');
                 overlay.classList.add('flex');
                 
-                // Visual red flash
                 document.body.classList.add('flash-warning');
                 setTimeout(() => document.body.classList.remove('flash-warning'), 3000);
             }
@@ -577,9 +739,8 @@
             overlay.classList.add('hidden');
             overlay.classList.remove('flex');
             
-            // Kembalikan status menjadi Ujian di DB
             if(isExamActive) {
-               updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Sedang Ujian', violations);
+               updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Sedang Ujian', violations);
             }
         }
 
@@ -596,8 +757,7 @@
             window.speechSynthesis.speak(msg);
         }
 
-
-        // --- DATABASE SIMULATION (LocalStorage Cross-Tab Comm) ---
+        // --- DATABASE TRACKING (LocalStorage Cross-Tab) ---
         function getDB() {
             const data = localStorage.getItem(DB_KEY);
             return data ? JSON.parse(data) : {};
@@ -605,15 +765,15 @@
 
         function saveDB(db) {
             localStorage.setItem(DB_KEY, JSON.stringify(db));
-            // Trigger event secara manual untuk update di tab yang sama (opsional)
             window.dispatchEvent(new Event('storage'));
         }
 
-        function updateStudentStatus(id, name, status, violationsCount, lastLog = "") {
+        function updateStudentStatus(id, name, stdClass, status, violationsCount, lastLog = "") {
             const db = getDB();
             db[id] = {
                 id: id,
                 name: name,
+                class: stdClass,
                 status: status,
                 violations: violationsCount,
                 lastLog: lastLog || new Date().toLocaleTimeString(),
@@ -623,7 +783,7 @@
         }
 
         function clearAllData() {
-            if(confirm("Hapus semua data siswa?")) {
+            if(confirm("Hapus semua data aktivitas siswa?")) {
                 localStorage.removeItem(DB_KEY);
                 renderTeacherDashboard();
             }
@@ -633,15 +793,11 @@
         function initTeacherDashboard() {
             switchView('view-teacher');
             renderTeacherDashboard();
-            
-            // Listen to LocalStorage changes from other tabs
             window.addEventListener('storage', (e) => {
-                if(e.key === DB_KEY || e.key === null) {
+                if(e.key === DB_KEY || e.key === null || e.key === SUBJECTS_DB_KEY) {
                     renderTeacherDashboard();
                 }
             });
-
-            // Fallback interval untuk memastikan UI selalu update
             setInterval(renderTeacherDashboard, 2000);
         }
 
@@ -655,7 +811,6 @@
         }
 
         function renderTeacherDashboard() {
-            // Hanya render jika view teacher aktif
             if(document.getElementById('view-teacher').classList.contains('hidden')) return;
 
             const db = getDB();
@@ -679,12 +834,10 @@
             tbody.innerHTML = '';
             
             students.forEach(std => {
-                // Count stats
                 if (std.status === 'Sedang Ujian') online++;
                 if (std.status === 'Melanggar') warning++;
                 if (std.status.includes('Dikunci') || std.status === 'Selesai') locked++;
 
-                // Determine row styling
                 let statusBadge = '';
                 let rowClass = 'hover:bg-slate-50 transition border-b border-slate-100';
                 
@@ -706,7 +859,10 @@
                 tr.className = rowClass;
                 tr.innerHTML = `
                     <td class="p-4 font-mono text-xs text-slate-500">${std.id}</td>
-                    <td class="p-4 font-bold text-slate-800">${std.name}</td>
+                    <td class="p-4">
+                        <div class="font-bold text-slate-800">${std.name}</div>
+                        <div class="text-xs text-slate-500">${std.class || '-'}</div>
+                    </td>
                     <td class="p-4">${statusBadge}</td>
                     <td class="p-4 text-center">
                         <span class="${std.violations >= 3 ? 'text-red-600 font-bold' : std.violations > 0 ? 'text-yellow-600 font-bold' : 'text-slate-400'}">
@@ -725,22 +881,99 @@
                 tbody.appendChild(tr);
             });
 
-            // Update Header Stats
             document.getElementById('dash-total').innerText = total;
             document.getElementById('dash-online').innerText = online;
             document.getElementById('dash-warning').innerText = warning;
             document.getElementById('dash-locked').innerText = locked;
         }
 
-        function generateQR() {
-            const url = document.getElementById('exam-url-input').value.trim();
-            if(url) {
-                // Panggil API pembuat QR Code
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
-                document.getElementById('generated-qr').src = qrUrl;
-            } else {
-                alert('Silakan masukkan link soal terlebih dahulu.');
+        // --- SUBJECT MANAGEMENT LOGIC (Dasbor Pengawas) ---
+        function getSubjectsDB() {
+            const data = localStorage.getItem(SUBJECTS_DB_KEY);
+            if (!data) return {};
+            let parsed = JSON.parse(data);
+            
+            // Migrasi format data lama (jika ada) ke format baru (objek berstatus aktif/tidak)
+            for (let key in parsed) {
+                if (typeof parsed[key] === 'string') {
+                    parsed[key] = { url: parsed[key], active: false };
+                }
             }
+            return parsed;
+        }
+
+        function loadSubjectSettings() {
+            const subject = document.getElementById('subject-select').value;
+            const input = document.getElementById('exam-url-input');
+            const toggle = document.getElementById('subject-active-toggle');
+            const qrImg = document.getElementById('generated-qr');
+            
+            if (subject) {
+                const db = getSubjectsDB();
+                const data = db[subject];
+                
+                if (data) {
+                    input.value = data.url;
+                    toggle.checked = data.active;
+                    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(data.url)}`;
+                } else {
+                    input.value = '';
+                    toggle.checked = false;
+                    qrImg.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="; // Blank transparent image
+                }
+                document.getElementById('qr-subject-label').innerText = subject;
+                updateQRBadge(toggle.checked);
+            } else {
+                input.value = '';
+                toggle.checked = false;
+                qrImg.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
+                document.getElementById('qr-subject-label').innerText = "Pilih Mapel";
+                
+                const badge = document.getElementById('qr-status-badge');
+                badge.innerText = "KOSONG";
+                badge.className = "absolute -top-3 -right-3 bg-slate-400 text-white text-[10px] font-bold px-2 py-1 rounded-full border-2 border-white shadow-sm";
+            }
+        }
+
+        function updateQRBadge(isActive) {
+            const badge = document.getElementById('qr-status-badge');
+            if (isActive) {
+                badge.innerText = "LIVE AKSES";
+                badge.className = "absolute -top-3 -right-3 bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-full border-2 border-white shadow-sm animate-pulse";
+            } else {
+                badge.innerText = "HANYA QR";
+                badge.className = "absolute -top-3 -right-3 bg-slate-500 text-white text-[10px] font-bold px-2 py-1 rounded-full border-2 border-white shadow-sm";
+            }
+        }
+
+        function saveSubjectSettings() {
+            const subject = document.getElementById('subject-select').value;
+            const url = document.getElementById('exam-url-input').value.trim();
+            const isActive = document.getElementById('subject-active-toggle').checked;
+
+            if (!subject) {
+                alert('Silakan pilih Mata Pelajaran terlebih dahulu.');
+                return;
+            }
+
+            if (!url) {
+                alert('Silakan masukkan link soal terlebih dahulu.');
+                return;
+            }
+
+            const db = getSubjectsDB();
+            db[subject] = { url: url, active: isActive };
+            localStorage.setItem(SUBJECTS_DB_KEY, JSON.stringify(db));
+
+            // Generate QR Code update
+            document.getElementById('generated-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+            document.getElementById('qr-subject-label').innerText = subject;
+            updateQRBadge(isActive);
+            
+            // Trigger storage event to immediately update student login page if open
+            window.dispatchEvent(new Event('storage'));
+            
+            alert(`Pengaturan ${subject} berhasil disimpan!`);
         }
 
         // Initialize: Switch to role view on load
