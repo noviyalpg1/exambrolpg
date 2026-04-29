@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excambro Secure Browser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Mencegah seleksi teks dan interaksi default untuk simulasi Kiosk */
+        .kiosk-mode {
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        
+        /* Animasi peringatan merah */
+        @keyframes flashRed {
+            0% { background-color: rgba(239, 68, 68, 0); }
+            50% { background-color: rgba(239, 68, 68, 0.9); }
+            100% { background-color: rgba(239, 68, 68, 0); }
+        }
+        .flash-warning {
+            animation: flashRed 1s ease-in-out 3;
+        }
+
+        /* Simulasi scanner line */
+        @keyframes scan {
+            0% { top: 0; }
+            50% { top: 100%; }
+            100% { top: 0; }
+        }
+        .scanner-line {
+            width: 100%;
+            height: 2px;
+            background-color: #10B981;
+            position: absolute;
+            animation: scan 2s infinite linear;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans h-screen w-screen overflow-hidden flex flex-col kiosk-mode">
+
+    <!-- OVERLAY PERINGATAN (Anti-Cheat) -->
+    <div id="warning-overlay" class="fixed inset-0 z-[100] hidden flex-col items-center justify-center bg-red-600 text-white p-6 text-center">
+        <i class="fas fa-exclamation-triangle text-7xl mb-4"></i>
+        <h1 class="text-4xl font-bold mb-2">PELANGGARAN TERDETEKSI</h1>
+        <p id="warning-text" class="text-xl mb-6">Anda mencoba keluar dari mode ujian.</p>
+        <div class="bg-white text-red-600 px-6 py-3 rounded-lg font-bold text-lg mb-4">
+            Peringatan ke: <span id="warning-count">1</span> / 3
+        </div>
+        <button onclick="dismissWarning()" class="mt-4 px-8 py-3 bg-white text-red-600 font-bold rounded-full shadow-lg hover:bg-gray-100 transition">
+            Saya Mengerti, Kembali ke Ujian
+        </button>
+    </div>
+
+    <!-- OVERLAY UJIAN DIKUNCI -->
+    <div id="locked-overlay" class="fixed inset-0 z-[200] hidden flex-col items-center justify-center bg-slate-900 text-white p-6 text-center">
+        <i class="fas fa-lock text-7xl text-red-500 mb-4"></i>
+        <h1 class="text-4xl font-bold text-red-500 mb-2">UJIAN DIKUNCI</h1>
+        <p class="text-xl mb-4 text-slate-300">Anda telah melakukan pelanggaran maksimal (3 kali).</p>
+        <p class="text-lg text-slate-400">Ujian Anda telah disubmit secara otomatis dan sesi ini dikunci. Silakan hubungi Pengawas.</p>
+    </div>
+
+    <!-- VIEW 1: ROLE SELECTION -->
+    <div id="view-role" class="flex-1 flex flex-col items-center justify-center p-6 bg-gradient-to-br from-blue-900 to-slate-800 text-white">
+        <div class="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 text-center text-slate-800">
+            <div class="mb-6 flex justify-center">
+                <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-4xl shadow-inner">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+            </div>
+            <h1 class="text-2xl font-bold mb-2">Excambro Secure</h1>
+            <p class="text-slate-500 mb-8 text-sm">Pilih peran Anda untuk melanjutkan</p>
+            
+            <div class="space-y-4">
+                <button onclick="switchView('view-student-login')" class="w-full flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-semibold transition shadow-md">
+                    <i class="fas fa-user-graduate text-xl"></i>
+                    Masuk sebagai Siswa
+                </button>
+                <button onclick="initTeacherDashboard()" class="w-full flex items-center justify-center gap-3 bg-slate-100 hover:bg-slate-200 text-slate-700 p-4 rounded-xl font-semibold transition border border-slate-300 shadow-sm">
+                    <i class="fas fa-chalkboard-teacher text-xl"></i>
+                    Dasbor Pengawas
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIEW 2: STUDENT LOGIN & SCANNER -->
+    <div id="view-student-login" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-800 text-white">
+        <button onclick="switchView('view-role')" class="absolute top-6 left-6 text-slate-300 hover:text-white">
+            <i class="fas fa-arrow-left text-xl"></i>
+        </button>
+        <div class="w-full max-w-sm text-center">
+            <h2 class="text-2xl font-bold mb-6">Scan QR Ujian</h2>
+            
+            <!-- Simulasi Kamera -->
+            <div class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border-4 border-slate-600 mb-6 shadow-2xl">
+                <div class="absolute inset-0 flex items-center justify-center opacity-30">
+                    <i class="fas fa-qrcode text-9xl text-white"></i>
+                </div>
+                <!-- Garis scan -->
+                <div class="scanner-line shadow-[0_0_15px_#10B981]"></div>
+                <!-- Target corners -->
+                <div class="absolute top-4 left-4 w-8 h-8 border-t-4 border-l-4 border-green-500 rounded-tl"></div>
+                <div class="absolute top-4 right-4 w-8 h-8 border-t-4 border-r-4 border-green-500 rounded-tr"></div>
+                <div class="absolute bottom-4 left-4 w-8 h-8 border-b-4 border-l-4 border-green-500 rounded-bl"></div>
+                <div class="absolute bottom-4 right-4 w-8 h-8 border-b-4 border-r-4 border-green-500 rounded-br"></div>
+            </div>
+
+            <p class="text-sm text-slate-400 mb-6">Arahkan kamera ke QR Code yang diberikan oleh pengawas.</p>
+
+            <!-- Input Nama (karena kita tidak pakai auth login di prototipe ini) -->
+            <input type="text" id="student-name" placeholder="Masukkan Nama Lengkap" class="w-full p-4 rounded-xl bg-slate-700 text-white border border-slate-600 mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+
+            <button onclick="simulateScan()" class="w-full bg-green-500 hover:bg-green-600 text-white p-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2">
+                <i class="fas fa-camera"></i> Simulasi Scan Sukses
+            </button>
+        </div>
+    </div>
+
+    <!-- VIEW 3: SYSTEM CHECK (Proteksi Tambahan) -->
+    <div id="view-system-check" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-900 text-white">
+        <div class="w-full max-w-md bg-slate-800 p-8 rounded-2xl border border-slate-700">
+            <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
+                <i class="fas fa-shield-check text-blue-400"></i> Pengecekan Keamanan Sistem
+            </h2>
+            
+            <div class="space-y-4 font-mono text-sm">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-700">
+                    <span class="flex items-center gap-2"><i class="fas fa-mobile-alt w-5"></i> Root Detection</span>
+                    <span id="check-root" class="text-yellow-400">Memeriksa...</span>
+                </div>
+                <div class="flex justify-between items-center pb-2 border-b border-slate-700">
+                    <span class="flex items-center gap-2"><i class="fab fa-usb w-5"></i> USB Debugging</span>
+                    <span id="check-usb" class="text-yellow-400">Memeriksa...</span>
+                </div>
+                <div class="flex justify-between items-center pb-2 border-b border-slate-700">
+                    <span class="flex items-center gap-2"><i class="fas fa-clone w-5"></i> Screen Mirroring</span>
+                    <span id="check-mirror" class="text-yellow-400">Memeriksa...</span>
+                </div>
+                <div class="flex justify-between items-center pb-2 border-b border-slate-700">
+                    <span class="flex items-center gap-2"><i class="fas fa-layer-group w-5"></i> Overlay Apps</span>
+                    <span id="check-overlay" class="text-yellow-400">Memeriksa...</span>
+                </div>
+            </div>
+
+            <div id="check-progress" class="mt-6 w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                <div class="bg-blue-500 h-2 w-0 transition-all duration-1000" id="progress-bar"></div>
+            </div>
+
+            <button id="btn-start-exam" onclick="enterExamMode()" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-bold transition shadow-lg opacity-50 cursor-not-allowed flex justify-center items-center gap-2" disabled>
+                <i class="fas fa-lock"></i> Masuk Mode Kiosk & Mulai
+            </button>
+        </div>
+    </div>
+
+    <!-- VIEW 4: SECURE EXAM BROWSER -->
+    <div id="view-exam" class="hidden flex-1 flex-col h-full bg-white relative">
+        <!-- App Bar / Header -->
+        <header class="bg-blue-900 text-white p-3 flex justify-between items-center shadow-md select-none">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                    <i class="fas fa-user-shield text-sm"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-sm leading-tight" id="display-student-name">Nama Siswa</h3>
+                    <p class="text-xs text-blue-200">Excambro Secure Session</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <div class="text-xs text-blue-200">Pelanggaran</div>
+                    <div id="display-violations" class="font-bold text-red-400 text-sm">0 / 3</div>
+                </div>
+                <div class="h-8 w-px bg-blue-700"></div>
+                <div class="text-right">
+                    <div class="text-xs text-blue-200">Waktu</div>
+                    <div id="exam-timer" class="font-bold text-sm font-mono text-green-400">00:00:00</div>
+                </div>
+                <button onclick="submitExam()" class="ml-2 bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded text-sm font-bold shadow">
+                    Selesai
+                </button>
+            </div>
+        </header>
+
+        <!-- WebView / Iframe Container -->
+        <div class="flex-1 bg-gray-200 relative overflow-hidden">
+            <!-- Peringatan overlay kecil saat kursor keluar -->
+            <div id="focus-warning" class="absolute top-0 left-0 w-full bg-red-500 text-white text-center py-1 text-xs font-bold hidden z-50">
+                Fokus hilang! Jangan pindah aplikasi.
+            </div>
+            
+            <!-- Google Form Embedded (Simulasi) -->
+            <!-- Menggunakan public form google untuk simulasi real -->
+            <iframe 
+                src="https://docs.google.com/forms/d/e/1FAIpQLSd9O-DofR6tS2zQd7A-2_G4lMlwzE1Q0rT_fJ6O1D0gE7R3qw/viewform?embedded=true" 
+                class="w-full h-full border-0"
+                id="exam-iframe"
+                title="Google Form Ujian">
+            </iframe>
+        </div>
+    </div>
+
+    <!-- VIEW 5: TEACHER DASHBOARD -->
+    <div id="view-teacher" class="hidden flex-1 flex-col h-full bg-slate-50">
+        <header class="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md">
+            <div class="flex items-center gap-3">
+                <i class="fas fa-chalkboard-teacher text-2xl text-blue-400"></i>
+                <h1 class="text-xl font-bold">Dasbor Pengawas Excambro</h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="flex items-center gap-2 text-sm bg-slate-700 px-3 py-1 rounded-full">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Sinkronisasi Aktif
+                </span>
+                <button onclick="switchView('view-role')" class="text-slate-300 hover:text-white text-sm">Keluar</button>
+            </div>
+        </header>
+
+        <main class="flex-1 p-6 overflow-auto">
+            <div class="max-w-6xl mx-auto">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-lg flex items-center justify-center text-xl"><i class="fas fa-users"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-semibold uppercase">Total Siswa</div>
+                            <div class="text-2xl font-bold text-slate-800" id="dash-total">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-green-100 text-green-600 rounded-lg flex items-center justify-center text-xl"><i class="fas fa-wifi"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-semibold uppercase">Online (Ujian)</div>
+                            <div class="text-2xl font-bold text-slate-800" id="dash-online">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-yellow-100 text-yellow-600 rounded-lg flex items-center justify-center text-xl"><i class="fas fa-exclamation-triangle"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-semibold uppercase">Peringatan</div>
+                            <div class="text-2xl font-bold text-slate-800" id="dash-warning">0</div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center gap-4">
+                        <div class="w-12 h-12 bg-red-100 text-red-600 rounded-lg flex items-center justify-center text-xl"><i class="fas fa-lock"></i></div>
+                        <div>
+                            <div class="text-xs text-slate-500 font-semibold uppercase">Dikunci/Submit</div>
+                            <div class="text-2xl font-bold text-slate-800" id="dash-locked">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                        <h2 class="font-bold text-slate-800">Monitoring Peserta (Live)</h2>
+                        <button onclick="clearAllData()" class="text-xs text-red-500 hover:underline"><i class="fas fa-trash"></i> Reset Data</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm">
+                            <thead class="bg-slate-100 text-slate-600">
+                                <tr>
+                                    <th class="p-4 font-semibold">ID</th>
+                                    <th class="p-4 font-semibold">Nama Siswa</th>
+                                    <th class="p-4 font-semibold">Status</th>
+                                    <th class="p-4 font-semibold text-center">Pelanggaran</th>
+                                    <th class="p-4 font-semibold">Aktivitas Terakhir</th>
+                                    <th class="p-4 font-semibold text-right">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody id="student-table-body" class="divide-y divide-slate-100">
+                                <!-- Data akan dirender via JS -->
+                                <tr><td colspan="6" class="p-8 text-center text-slate-400">Belum ada siswa yang login.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="mt-4 p-4 bg-blue-50 text-blue-800 rounded-lg text-sm flex gap-3 items-start border border-blue-200">
+                    <i class="fas fa-info-circle mt-0.5"></i>
+                    <div>
+                        <strong>Cara Uji Coba:</strong> Buka prototipe ini di <strong>tab atau perangkat lain</strong>, lalu masuk sebagai "Siswa". Coba minimize tab siswa atau klik kanan. Data di dasbor ini akan terupdate seketika (menggunakan komunikasi antar-tab <i>localStorage</i>).
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // --- GLOBAL STATE ---
+        let currentStudentId = null;
+        let isExamActive = false;
+        let violations = 0;
+        let examTimer = 0;
+        let timerInterval = null;
+        let isFocusLost = false;
+
+        // Kunci local storage untuk simulasi database realtime
+        const DB_KEY = 'excambro_students_db';
+
+        // --- NAVIGATION & UI ---
+        function switchView(viewId) {
+            document.querySelectorAll('body > div[id^="view-"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById(viewId).classList.remove('hidden');
+        }
+
+        // --- STUDENT FLOW ---
+        function simulateScan() {
+            const nameInput = document.getElementById('student-name').value.trim();
+            if (!nameInput) {
+                alert("Silakan masukkan nama untuk simulasi.");
+                return;
+            }
+            
+            // Buat ID unik untuk sesi
+            currentStudentId = 'STD-' + Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('display-student-name').innerText = nameInput;
+            
+            // Daftarkan ke "Database"
+            updateStudentStatus(currentStudentId, nameInput, 'Menunggu', 0);
+            
+            switchView('view-system-check');
+            runSystemCheck();
+        }
+
+        function runSystemCheck() {
+            const checks = ['check-root', 'check-usb', 'check-mirror', 'check-overlay'];
+            let progress = 0;
+            const bar = document.getElementById('progress-bar');
+            
+            checks.forEach((id, index) => {
+                setTimeout(() => {
+                    const el = document.getElementById(id);
+                    el.innerText = 'Aman';
+                    el.classList.remove('text-yellow-400');
+                    el.classList.add('text-green-400');
+                    
+                    progress += 25;
+                    bar.style.width = `${progress}%`;
+
+                    if (progress === 100) {
+                        const btn = document.getElementById('btn-start-exam');
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                        updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Siap Ujian', 0);
+                    }
+                }, 800 * (index + 1));
+            });
+        }
+
+        async function enterExamMode() {
+            // Simulasi Request Fullscreen (Lock Task Mode)
+            try {
+                if (document.documentElement.requestFullscreen) {
+                    await document.documentElement.requestFullscreen();
+                }
+            } catch (e) {
+                console.log("Fullscreen direject browser, melanjutkan ujian.");
+            }
+
+            switchView('view-exam');
+            isExamActive = true;
+            violations = 0;
+            startTimer();
+            setupAntiCheat();
+            
+            updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Sedang Ujian', 0);
+        }
+
+        function startTimer() {
+            examTimer = 0;
+            timerInterval = setInterval(() => {
+                examTimer++;
+                const hrs = String(Math.floor(examTimer / 3600)).padStart(2, '0');
+                const mins = String(Math.floor((examTimer % 3600) / 60)).padStart(2, '0');
+                const secs = String(examTimer % 60).padStart(2, '0');
+                document.getElementById('exam-timer').innerText = `${hrs}:${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function submitExam() {
+            isExamActive = false;
+            clearInterval(timerInterval);
+            removeAntiCheat();
+            if (document.exitFullscreen && document.fullscreenElement) {
+                document.exitFullscreen();
+            }
+            updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Selesai', violations);
+            alert("Ujian berhasil disubmit.");
+            switchView('view-role');
+        }
+
+        // --- ANTI-CHEAT ENGINE (SIMULATED) ---
+        function setupAntiCheat() {
+            // 1. Deteksi Ganti Tab / Keluar Aplikasi (Visibility)
+            document.addEventListener("visibilitychange", handleVisibilityChange);
+            
+            // 2. Deteksi Kehilangan Fokus (Blur Window)
+            window.addEventListener("blur", handleWindowBlur);
+            window.addEventListener("focus", handleWindowFocus);
+
+            // 3. Blokir Klik Kanan
+            document.addEventListener("contextmenu", preventDefaultAction);
+
+            // 4. Blokir Copy/Paste
+            document.addEventListener("copy", preventDefaultAction);
+            document.addEventListener("paste", preventDefaultAction);
+
+            // 5. Blokir Keyboard Shortcuts (F12, dll di web)
+            document.addEventListener("keydown", handleKeydown);
+        }
+
+        function removeAntiCheat() {
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+            window.removeEventListener("blur", handleWindowBlur);
+            window.removeEventListener("focus", handleWindowFocus);
+            document.removeEventListener("contextmenu", preventDefaultAction);
+            document.removeEventListener("copy", preventDefaultAction);
+            document.removeEventListener("paste", preventDefaultAction);
+            document.removeEventListener("keydown", handleKeydown);
+        }
+
+        function preventDefaultAction(e) {
+            if(!isExamActive) return;
+            e.preventDefault();
+            triggerViolation("Mencoba menggunakan fitur yang dilarang (Klik Kanan/Copy/Paste).");
+        }
+
+        function handleKeydown(e) {
+            if(!isExamActive) return;
+            // Blokir F12, Ctrl+Shift+I, Ctrl+C, Ctrl+V, Alt+Tab (browser limit)
+            if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I') || (e.ctrlKey && (e.key === 'c' || e.key === 'v'))) {
+                e.preventDefault();
+                triggerViolation("Mencoba menggunakan shortcut keyboard yang dilarang.");
+            }
+        }
+
+        function handleVisibilityChange() {
+            if (document.visibilityState === 'hidden' && isExamActive) {
+                triggerViolation("Aplikasi di-minimize atau pindah tab.");
+            }
+        }
+
+        function handleWindowBlur() {
+            if (!isExamActive) return;
+            isFocusLost = true;
+            document.getElementById('focus-warning').classList.remove('hidden');
+            // Menunggu sebentar sebelum menganggap pelanggaran, karena klik di iframe terkadang memicu blur
+            setTimeout(() => {
+                if (isFocusLost && isExamActive && document.visibilityState !== 'hidden') {
+                    // Hanya warning visual ringan untuk fokus hilang (tidak masuk strike keras)
+                    console.log("Fokus mungkin di iframe.");
+                }
+            }, 1000);
+        }
+
+        function handleWindowFocus() {
+            isFocusLost = false;
+            document.getElementById('focus-warning').classList.add('hidden');
+        }
+
+        function triggerViolation(reason) {
+            if (!isExamActive) return;
+            
+            violations++;
+            document.getElementById('display-violations').innerText = `${violations} / 3`;
+            
+            // Update Database (Realtime Sync to Teacher)
+            updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Melanggar', violations, reason);
+
+            // Audio Peringatan menggunakan TTS bawaan browser
+            speakPeringatan(violations);
+
+            if (violations >= 3) {
+                // Lock down
+                isExamActive = false;
+                clearInterval(timerInterval);
+                document.getElementById('locked-overlay').classList.remove('hidden');
+                document.getElementById('locked-overlay').classList.add('flex');
+                updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Dikunci', violations, "Maksimal pelanggaran tercapai.");
+            } else {
+                // Show Warning Popup
+                document.getElementById('warning-count').innerText = violations;
+                document.getElementById('warning-text').innerText = reason;
+                const overlay = document.getElementById('warning-overlay');
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+                
+                // Visual red flash
+                document.body.classList.add('flash-warning');
+                setTimeout(() => document.body.classList.remove('flash-warning'), 3000);
+            }
+        }
+
+        function dismissWarning() {
+            const overlay = document.getElementById('warning-overlay');
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+            
+            // Kembalikan status menjadi Ujian di DB
+            if(isExamActive) {
+               updateStudentStatus(currentStudentId, document.getElementById('display-student-name').innerText, 'Sedang Ujian', violations);
+            }
+        }
+
+        function speakPeringatan(count) {
+            if (!window.speechSynthesis) return;
+            let text = "";
+            if (count === 1) text = "Peringatan pertama. Anda mencoba keluar dari aplikasi ujian. Aktivitas dicatat.";
+            else if (count === 2) text = "Peringatan kedua. Jika Anda keluar lagi, ujian akan dikunci otomatis.";
+            else if (count >= 3) text = "Pelanggaran maksimal. Ujian dikunci.";
+
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.lang = 'id-ID';
+            msg.rate = 0.9;
+            window.speechSynthesis.speak(msg);
+        }
+
+
+        // --- DATABASE SIMULATION (LocalStorage Cross-Tab Comm) ---
+        function getDB() {
+            const data = localStorage.getItem(DB_KEY);
+            return data ? JSON.parse(data) : {};
+        }
+
+        function saveDB(db) {
+            localStorage.setItem(DB_KEY, JSON.stringify(db));
+            // Trigger event secara manual untuk update di tab yang sama (opsional)
+            window.dispatchEvent(new Event('storage'));
+        }
+
+        function updateStudentStatus(id, name, status, violationsCount, lastLog = "") {
+            const db = getDB();
+            db[id] = {
+                id: id,
+                name: name,
+                status: status,
+                violations: violationsCount,
+                lastLog: lastLog || new Date().toLocaleTimeString(),
+                timestamp: Date.now()
+            };
+            saveDB(db);
+        }
+
+        function clearAllData() {
+            if(confirm("Hapus semua data siswa?")) {
+                localStorage.removeItem(DB_KEY);
+                renderTeacherDashboard();
+            }
+        }
+
+        // --- TEACHER DASHBOARD LOGIC ---
+        function initTeacherDashboard() {
+            switchView('view-teacher');
+            renderTeacherDashboard();
+            
+            // Listen to LocalStorage changes from other tabs
+            window.addEventListener('storage', (e) => {
+                if(e.key === DB_KEY || e.key === null) {
+                    renderTeacherDashboard();
+                }
+            });
+
+            // Fallback interval untuk memastikan UI selalu update
+            setInterval(renderTeacherDashboard, 2000);
+        }
+
+        function forceSubmitStudent(id) {
+            const db = getDB();
+            if(db[id]) {
+                db[id].status = 'Dikunci (Force)';
+                saveDB(db);
+                alert("Siswa berhasil dikunci.");
+            }
+        }
+
+        function renderTeacherDashboard() {
+            // Hanya render jika view teacher aktif
+            if(document.getElementById('view-teacher').classList.contains('hidden')) return;
+
+            const db = getDB();
+            const tbody = document.getElementById('student-table-body');
+            const students = Object.values(db).sort((a,b) => b.timestamp - a.timestamp);
+            
+            let total = students.length;
+            let online = 0;
+            let warning = 0;
+            let locked = 0;
+
+            if (total === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Belum ada siswa yang login.</td></tr>`;
+                document.getElementById('dash-total').innerText = 0;
+                document.getElementById('dash-online').innerText = 0;
+                document.getElementById('dash-warning').innerText = 0;
+                document.getElementById('dash-locked').innerText = 0;
+                return;
+            }
+
+            tbody.innerHTML = '';
+            
+            students.forEach(std => {
+                // Count stats
+                if (std.status === 'Sedang Ujian') online++;
+                if (std.status === 'Melanggar') warning++;
+                if (std.status.includes('Dikunci') || std.status === 'Selesai') locked++;
+
+                // Determine row styling
+                let statusBadge = '';
+                let rowClass = 'hover:bg-slate-50 transition border-b border-slate-100';
+                
+                if (std.status === 'Sedang Ujian') {
+                    statusBadge = `<span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold"><i class="fas fa-circle text-[8px] mr-1 animate-pulse"></i> Sedang Ujian</span>`;
+                } else if (std.status === 'Melanggar') {
+                    statusBadge = `<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-bold"><i class="fas fa-exclamation-triangle mr-1"></i> Melanggar</span>`;
+                    rowClass = 'bg-yellow-50 border-b border-yellow-100';
+                } else if (std.status.includes('Dikunci')) {
+                    statusBadge = `<span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold"><i class="fas fa-lock mr-1"></i> Dikunci</span>`;
+                    rowClass = 'bg-red-50 border-b border-red-100 opacity-75';
+                } else if (std.status === 'Selesai') {
+                    statusBadge = `<span class="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold"><i class="fas fa-check mr-1"></i> Selesai</span>`;
+                } else {
+                    statusBadge = `<span class="bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-bold">${std.status}</span>`;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = rowClass;
+                tr.innerHTML = `
+                    <td class="p-4 font-mono text-xs text-slate-500">${std.id}</td>
+                    <td class="p-4 font-bold text-slate-800">${std.name}</td>
+                    <td class="p-4">${statusBadge}</td>
+                    <td class="p-4 text-center">
+                        <span class="${std.violations >= 3 ? 'text-red-600 font-bold' : std.violations > 0 ? 'text-yellow-600 font-bold' : 'text-slate-400'}">
+                            ${std.violations}
+                        </span>
+                    </td>
+                    <td class="p-4 text-xs text-slate-500">${std.lastLog}</td>
+                    <td class="p-4 text-right">
+                        ${(std.status !== 'Dikunci' && std.status !== 'Selesai' && std.status !== 'Dikunci (Force)') ? 
+                          `<button onclick="forceSubmitStudent('${std.id}')" class="text-xs bg-slate-800 hover:bg-red-600 text-white px-3 py-1.5 rounded transition shadow-sm">
+                              Force Submit
+                           </button>` : 
+                          `<span class="text-xs text-slate-400 italic">Selesai</span>`}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Update Header Stats
+            document.getElementById('dash-total').innerText = total;
+            document.getElementById('dash-online').innerText = online;
+            document.getElementById('dash-warning').innerText = warning;
+            document.getElementById('dash-locked').innerText = locked;
+        }
+
+        // Initialize: Switch to role view on load
+        switchView('view-role');
+
+    </script>
+</body>
+</html>
