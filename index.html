@@ -264,6 +264,22 @@
                     </div>
                 </div>
 
+                <!-- Tambahan Generator QR Ujian -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row items-center gap-6">
+                    <div class="text-center md:text-left flex-1">
+                        <h2 class="font-bold text-slate-800 text-lg mb-2"><i class="fas fa-qrcode text-blue-500 mr-2"></i> Generator QR Ujian</h2>
+                        <p class="text-sm text-slate-500 mb-4">Buat QR Code dari link soal (Google Form, dll). Siswa wajib scan kode ini dari perangkat mereka untuk memulai ujian yang benar.</p>
+                        <div class="flex flex-col sm:flex-row gap-2">
+                           <input type="url" id="exam-url-input" value="https://docs.google.com/forms/d/e/1FAIpQLSd9O-DofR6tS2zQd7A-2_G4lMlwzE1Q0rT_fJ6O1D0gE7R3qw/viewform?embedded=true" class="flex-1 p-3 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Masukkan Link Google Form / Soal Ujian">
+                           <button onclick="generateQR()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg text-sm font-bold transition whitespace-nowrap">Generate QR</button>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex-shrink-0 flex flex-col items-center">
+                        <img id="generated-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://docs.google.com/forms/d/e/1FAIpQLSd9O-DofR6tS2zQd7A-2_G4lMlwzE1Q0rT_fJ6O1D0gE7R3qw/viewform?embedded=true" alt="QR Ujian" class="w-32 h-32 md:w-40 md:h-40 shadow-sm rounded-lg bg-white p-2">
+                        <span class="text-xs text-slate-400 mt-2 font-semibold">Tampilkan ke Siswa</span>
+                    </div>
+                </div>
+
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                     <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
                         <h2 class="font-bold text-slate-800">Monitoring Peserta (Live)</h2>
@@ -352,7 +368,8 @@
             html5QrCode = new Html5Qrcode("qr-reader");
             const config = { fps: 10, qrbox: { width: 250, height: 250 } };
             
-            html5QrCode.start({ facingMode: "environment" }, config, 
+            // Ubah constraint agar bisa jalan di Laptop (fallback ke kamera yg ada jika back camera tidak ada)
+            html5QrCode.start({ facingMode: { ideal: "environment" } }, config, 
                 (decodedText, decodedResult) => {
                     // KETIKA QR BERHASIL DISCAN:
                     
@@ -368,9 +385,10 @@
                     
                     updateStudentStatus(currentStudentId, nameInput, 'Menunggu', 0);
                     
-                    // OPSIONAL: Jika QR yang discan berisi link Google Form, Anda bisa 
-                    // mengganti src iFrame agar otomatis menuju form tersebut:
-                    // document.getElementById('exam-iframe').src = decodedText;
+                    // 3. Masukkan link hasil scan QR ke dalam Iframe Ujian!
+                    if(decodedText.startsWith('http')) {
+                        document.getElementById('exam-iframe').src = decodedText;
+                    }
                     
                     switchView('view-system-check');
                     runSystemCheck();
@@ -712,6 +730,17 @@
             document.getElementById('dash-online').innerText = online;
             document.getElementById('dash-warning').innerText = warning;
             document.getElementById('dash-locked').innerText = locked;
+        }
+
+        function generateQR() {
+            const url = document.getElementById('exam-url-input').value.trim();
+            if(url) {
+                // Panggil API pembuat QR Code
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+                document.getElementById('generated-qr').src = qrUrl;
+            } else {
+                alert('Silakan masukkan link soal terlebih dahulu.');
+            }
         }
 
         // Initialize: Switch to role view on load
