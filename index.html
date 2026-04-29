@@ -364,16 +364,28 @@
                 </div>
 
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+                    <div class="p-4 border-b border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center bg-slate-50 gap-4">
                         <h2 class="font-bold text-slate-800">Monitoring Peserta (Live)</h2>
-                        <button onclick="clearAllData()" class="text-xs text-red-500 hover:underline"><i class="fas fa-trash"></i> Reset Data</button>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <div class="flex items-center bg-white border border-slate-300 rounded-lg overflow-hidden">
+                                <span class="pl-3 text-slate-400"><i class="fas fa-search"></i></span>
+                                <input type="text" id="filter-name" placeholder="Cari Nama..." class="p-2 text-sm outline-none w-32" oninput="renderTeacherDashboard()">
+                            </div>
+                            <input type="text" id="filter-class" placeholder="Kelas..." class="p-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-blue-500 w-24" oninput="renderTeacherDashboard()">
+                            <select id="filter-subject" class="p-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-blue-500" onchange="renderTeacherDashboard()">
+                                <option value="">Semua Mapel</option>
+                            </select>
+                            <button onclick="downloadCSV()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2 transition"><i class="fas fa-file-csv"></i> Download CSV</button>
+                            <button onclick="clearAllData()" class="text-xs text-red-500 hover:bg-red-50 px-2 py-2 rounded transition ml-1"><i class="fas fa-trash"></i> Reset Data</button>
+                        </div>
                     </div>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm">
+                        <table class="w-full text-left text-sm whitespace-nowrap">
                             <thead class="bg-slate-100 text-slate-600">
                                 <tr>
                                     <th class="p-4 font-semibold">ID</th>
                                     <th class="p-4 font-semibold">Nama Siswa</th>
+                                    <th class="p-4 font-semibold">Mata Pelajaran</th>
                                     <th class="p-4 font-semibold">Status</th>
                                     <th class="p-4 font-semibold text-center">Pelanggaran</th>
                                     <th class="p-4 font-semibold">Aktivitas Terakhir</th>
@@ -382,7 +394,7 @@
                             </thead>
                             <tbody id="student-table-body" class="divide-y divide-slate-100">
                                 <!-- Data akan dirender via JS -->
-                                <tr><td colspan="6" class="p-8 text-center text-slate-400">Belum ada siswa yang login.</td></tr>
+                                <tr><td colspan="7" class="p-8 text-center text-slate-400">Belum ada siswa yang login.</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -393,9 +405,13 @@
 
     <script>
         // --- GLOBAL STATE ---
+        const GAS_URL = "https://script.google.com/macros/s/AKfycbyxS7_osSwejMqp__TiQMN4sgaY0r6uw31LBGYAc0-3kc0C6tUpxprJJ7e4pioxU_eOPA/exec";
+        
         let currentStudentId = null;
         let currentStudentName = "";
         let currentStudentClass = "";
+        let currentExamUrl = ""; // Menyimpan URL soal yang sedang dikerjakan
+        let currentSubjectName = ""; // Menyimpan Nama Mata Pelajaran
         let isExamActive = false;
         let violations = 0;
         let examTimer = 0;
@@ -406,6 +422,72 @@
         // Kunci local storage
         const DB_KEY = 'excambro_students_db';
         const SUBJECTS_DB_KEY = 'excambro_subjects_db';
+        const COMPLETED_EXAMS_DB_KEY = 'excambro_completed_exams_db'; // Database Riwayat Ujian
+
+        // --- BACKEND SYNC LOGIC ---
+        async function syncToBackend() {
+            try {
+                const payload = {
+                    action: 'setDatabase',
+                    data: {
+                        students: getDB(),
+                        subjects: getSubjectsDB(),
+                        completedExams: getCompletedExamsDB()
+                    }
+                };
+                fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload)
+                }).catch(e => console.log("Silent sync failed", e));
+            } catch(e) {}
+        }
+
+        async function fetchFromBackend() {
+            try {
+                const response = await fetch(GAS_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify({ action: 'getDatabase' })
+                });
+                const result = await response.json();
+                if (result.status === 'success' && result.data) {
+                    if(result.data.students) localStorage.setItem(DB_KEY, JSON.stringify(result.data.students));
+                    if(result.data.subjects) localStorage.setItem(SUBJECTS_DB_KEY, JSON.stringify(result.data.subjects));
+                    if(result.data.completedExams) localStorage.setItem(COMPLETED_EXAMS_DB_KEY, JSON.stringify(result.data.completedExams));
+                    window.dispatchEvent(new Event('storage'));
+                }
+            } catch(e) {
+                console.error("Gagal sinkronisasi awal dari server:", e);
+            }
+        }
+
+        // --- SISTEM RIWAYAT (PENCEGAH UJIAN GANDA) ---
+        function getCompletedExamsDB() {
+            const data = localStorage.getItem(COMPLETED_EXAMS_DB_KEY);
+            return data ? JSON.parse(data) : {};
+        }
+
+        function markExamCompleted(name, stdClass, examUrl) {
+            const db = getCompletedExamsDB();
+            // Kunci unik: "nama_kelas" (diubah ke lowercase agar tidak sensitif huruf besar/kecil)
+            const studentKey = `${name}_${stdClass}`.toLowerCase().trim();
+            
+            if (!db[studentKey]) {
+                db[studentKey] = [];
+            }
+            if (!db[studentKey].includes(examUrl)) {
+                db[studentKey].push(examUrl);
+            }
+            localStorage.setItem(COMPLETED_EXAMS_DB_KEY, JSON.stringify(db));
+            syncToBackend();
+        }
+
+        function hasCompletedExam(name, stdClass, examUrl) {
+            const db = getCompletedExamsDB();
+            const studentKey = `${name}_${stdClass}`.toLowerCase().trim();
+            return db[studentKey] && db[studentKey].includes(examUrl);
+        }
 
         // --- HELPER SCANNER (Mencegah Error Stop) ---
         function stopAndClearScanner(callback) {
@@ -548,14 +630,17 @@
         function startViaDropdown() {
             if (!validateStudentIdentity()) return;
             
-            const url = document.getElementById('student-subject-select').value;
+            const selectEl = document.getElementById('student-subject-select');
+            const url = selectEl.value;
+            
             if (!url) {
                 alert("Silakan pilih Mata Pelajaran yang tersedia!");
                 return;
             }
 
-            triggerFullscreen(); // Panggil fullscreen langsung saat diklik
-            prepareExamSession(url);
+            const subjectName = selectEl.options[selectEl.selectedIndex].text;
+
+            prepareExamSession(url, subjectName);
         }
 
         // Opsi 2: Mulai via QR Scan
@@ -576,7 +661,16 @@
                     // Ketika scan berhasil
                     stopAndClearScanner(() => {
                         if(decodedText.startsWith('http')) {
-                            prepareExamSession(decodedText);
+                            // Cari nama mapel dari database lokal berdasarkan URL
+                            const db = getSubjectsDB();
+                            let matchedSubject = "Mapel QR Code";
+                            for(const [subj, data] of Object.entries(db)) {
+                                if(data.url === decodedText) {
+                                    matchedSubject = subj;
+                                    break;
+                                }
+                            }
+                            prepareExamSession(decodedText, matchedSubject);
                         } else {
                             alert("QR Code tidak valid. Harus berisi Link URL.");
                             stopScannerAndGoBack();
@@ -591,7 +685,18 @@
             });
         }
 
-        function prepareExamSession(examUrl) {
+        function prepareExamSession(examUrl, subjectName) {
+            // CEK APAKAH SISWA SUDAH PERNAH MENGERJAKAN UJIAN INI
+            if (hasCompletedExam(currentStudentName, currentStudentClass, examUrl)) {
+                alert("Anda Telah Mengerjakan Soal");
+                stopScannerAndGoBack();
+                return;
+            }
+
+            currentExamUrl = examUrl;
+            currentSubjectName = subjectName || "Mapel QR Code";
+            triggerFullscreen();
+
             currentStudentId = 'STD-' + Math.floor(1000 + Math.random() * 9000);
             document.getElementById('display-student-name').innerText = `${currentStudentName} (${currentStudentClass})`;
             document.getElementById('exam-iframe').src = examUrl;
@@ -626,7 +731,7 @@
                         const btn = document.getElementById('btn-start-exam');
                         btn.disabled = false;
                         btn.classList.remove('opacity-50', 'cursor-not-allowed');
-                        updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Siap Ujian', 0);
+                        updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Siap Ujian', 0, "", currentExamUrl);
                     }
                 }, 800 * (index + 1));
             });
@@ -642,7 +747,7 @@
             startTimer();
             setupAntiCheat();
             
-            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Sedang Ujian', 0);
+            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Sedang Ujian', 0, "", currentExamUrl);
         }
 
         function startTimer() {
@@ -662,6 +767,11 @@
             clearInterval(timerInterval);
             removeAntiCheat();
             
+            // TANDAI UJIAN SELESAI
+            if (currentExamUrl) {
+                markExamCompleted(currentStudentName, currentStudentClass, currentExamUrl);
+            }
+            
             // Keluar dari mode fullscreen dengan dukungan lintas browser
             if (document.exitFullscreen) {
                 document.exitFullscreen().catch(err => console.log(err));
@@ -673,7 +783,7 @@
                 document.mozCancelFullScreen();
             }
             
-            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Selesai', violations);
+            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Selesai', violations, "", currentExamUrl);
             alert("Ujian berhasil disubmit.");
             switchView('view-role');
         }
@@ -740,7 +850,7 @@
             
             violations++;
             document.getElementById('display-violations').innerText = `${violations} / 3`;
-            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Melanggar', violations, reason);
+            updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Melanggar', violations, reason, currentExamUrl);
             speakPeringatan(violations);
 
             if (violations >= 3) {
@@ -748,7 +858,13 @@
                 clearInterval(timerInterval);
                 document.getElementById('locked-overlay').classList.remove('hidden');
                 document.getElementById('locked-overlay').classList.add('flex');
-                updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Dikunci', violations, "Maksimal pelanggaran tercapai.");
+                
+                // TANDAI SELESAI / DIKUNCI AGAR TIDAK BISA DIULANG
+                if (currentExamUrl) {
+                    markExamCompleted(currentStudentName, currentStudentClass, currentExamUrl);
+                }
+
+                updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Dikunci', violations, "Maksimal pelanggaran tercapai.", currentExamUrl);
             } else {
                 document.getElementById('warning-count').innerText = violations;
                 document.getElementById('warning-text').innerText = reason;
@@ -767,7 +883,7 @@
             overlay.classList.remove('flex');
             
             if(isExamActive) {
-               updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Sedang Ujian', violations);
+               updateStudentStatus(currentStudentId, currentStudentName, currentStudentClass, 'Sedang Ujian', violations, "", currentExamUrl);
             }
         }
 
@@ -793,10 +909,16 @@
         function saveDB(db) {
             localStorage.setItem(DB_KEY, JSON.stringify(db));
             window.dispatchEvent(new Event('storage'));
+            syncToBackend();
         }
 
-        function updateStudentStatus(id, name, stdClass, status, violationsCount, lastLog = "") {
+        function updateStudentStatus(id, name, stdClass, status, violationsCount, lastLog = "", examUrl = "", subject = "") {
             const db = getDB();
+            
+            // Gunakan nilai yang diteruskan, atau fallback ke global, atau data yang sudah tersimpan
+            const finalExamUrl = examUrl || currentExamUrl || (db[id] ? db[id].examUrl : "");
+            const finalSubject = subject || currentSubjectName || (db[id] ? db[id].subject : "");
+
             db[id] = {
                 id: id,
                 name: name,
@@ -804,24 +926,45 @@
                 status: status,
                 violations: violationsCount,
                 lastLog: lastLog || new Date().toLocaleTimeString(),
+                examUrl: finalExamUrl,
+                subject: finalSubject,
                 timestamp: Date.now()
             };
             saveDB(db);
         }
 
         function clearAllData() {
-            if(confirm("Hapus semua data aktivitas siswa?")) {
+            if(confirm("Hapus semua data aktivitas dan RIWAYAT ujian siswa? (Ini akan mengizinkan siswa mengerjakan ulang)")) {
                 localStorage.removeItem(DB_KEY);
+                localStorage.removeItem(COMPLETED_EXAMS_DB_KEY);
+                syncToBackend();
                 renderTeacherDashboard();
             }
         }
 
         // --- TEACHER DASHBOARD LOGIC ---
+        function populateSubjectFilter() {
+            const filterSelect = document.getElementById('filter-subject');
+            if(!filterSelect) return;
+            const currentVal = filterSelect.value;
+            filterSelect.innerHTML = '<option value="">Semua Mapel</option>';
+            const subjects = Object.keys(getSubjectsDB());
+            subjects.forEach(subj => {
+                const opt = document.createElement('option');
+                opt.value = subj;
+                opt.textContent = subj;
+                filterSelect.appendChild(opt);
+            });
+            filterSelect.value = currentVal;
+        }
+
         function initTeacherDashboard() {
             switchView('view-teacher');
+            populateSubjectFilter();
             renderTeacherDashboard();
             window.addEventListener('storage', (e) => {
-                if(e.key === DB_KEY || e.key === null || e.key === SUBJECTS_DB_KEY) {
+                if(e.key === DB_KEY || e.key === null || e.key === SUBJECTS_DB_KEY || e.key === COMPLETED_EXAMS_DB_KEY) {
+                    if(e.key === SUBJECTS_DB_KEY) populateSubjectFilter();
                     renderTeacherDashboard();
                 }
             });
@@ -832,6 +975,10 @@
             const db = getDB();
             if(db[id]) {
                 db[id].status = 'Dikunci (Force)';
+                // Tandai bahwa siswa sudah dikunci sehingga tidak bisa mengulang
+                if (db[id].examUrl) {
+                    markExamCompleted(db[id].name, db[id].class, db[id].examUrl);
+                }
                 saveDB(db);
                 alert("Siswa berhasil dikunci.");
             }
@@ -842,15 +989,16 @@
 
             const db = getDB();
             const tbody = document.getElementById('student-table-body');
-            const students = Object.values(db).sort((a,b) => b.timestamp - a.timestamp);
+            let students = Object.values(db).sort((a,b) => b.timestamp - a.timestamp);
             
+            // Hitung statistik (dari semua data, sebelum difilter)
             let total = students.length;
             let online = 0;
             let warning = 0;
             let locked = 0;
 
             if (total === 0) {
-                tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">Belum ada siswa yang login.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Belum ada siswa yang login.</td></tr>`;
                 document.getElementById('dash-total').innerText = 0;
                 document.getElementById('dash-online').innerText = 0;
                 document.getElementById('dash-warning').innerText = 0;
@@ -858,13 +1006,37 @@
                 return;
             }
 
-            tbody.innerHTML = '';
-            
             students.forEach(std => {
                 if (std.status === 'Sedang Ujian') online++;
                 if (std.status === 'Melanggar') warning++;
                 if (std.status.includes('Dikunci') || std.status === 'Selesai') locked++;
+            });
 
+            document.getElementById('dash-total').innerText = total;
+            document.getElementById('dash-online').innerText = online;
+            document.getElementById('dash-warning').innerText = warning;
+            document.getElementById('dash-locked').innerText = locked;
+
+            // Terapkan Filter
+            const nameFilter = document.getElementById('filter-name') ? document.getElementById('filter-name').value.toLowerCase() : "";
+            const classFilter = document.getElementById('filter-class') ? document.getElementById('filter-class').value.toLowerCase() : "";
+            const subjectFilter = document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : "";
+
+            students = students.filter(std => {
+                const matchName = std.name.toLowerCase().includes(nameFilter);
+                const matchClass = (std.class || '').toLowerCase().includes(classFilter);
+                const matchSubject = subjectFilter === "" || (std.subject === subjectFilter);
+                return matchName && matchClass && matchSubject;
+            });
+
+            if (students.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Tidak ada data yang sesuai filter.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = '';
+            
+            students.forEach(std => {
                 let statusBadge = '';
                 let rowClass = 'hover:bg-slate-50 transition border-b border-slate-100';
                 
@@ -890,6 +1062,7 @@
                         <div class="font-bold text-slate-800">${std.name}</div>
                         <div class="text-xs text-slate-500">${std.class || '-'}</div>
                     </td>
+                    <td class="p-4 text-sm font-semibold text-blue-700">${std.subject || '-'}</td>
                     <td class="p-4">${statusBadge}</td>
                     <td class="p-4 text-center">
                         <span class="${std.violations >= 3 ? 'text-red-600 font-bold' : std.violations > 0 ? 'text-yellow-600 font-bold' : 'text-slate-400'}">
@@ -907,11 +1080,53 @@
                 `;
                 tbody.appendChild(tr);
             });
+        }
 
-            document.getElementById('dash-total').innerText = total;
-            document.getElementById('dash-online').innerText = online;
-            document.getElementById('dash-warning').innerText = warning;
-            document.getElementById('dash-locked').innerText = locked;
+        // --- EXPORT CSV LOGIC ---
+        function downloadCSV() {
+            const db = getDB();
+            let students = Object.values(db).sort((a,b) => b.timestamp - a.timestamp);
+            
+            // Terapkan Filter yang sama
+            const nameFilter = document.getElementById('filter-name') ? document.getElementById('filter-name').value.toLowerCase() : "";
+            const classFilter = document.getElementById('filter-class') ? document.getElementById('filter-class').value.toLowerCase() : "";
+            const subjectFilter = document.getElementById('filter-subject') ? document.getElementById('filter-subject').value : "";
+
+            students = students.filter(std => {
+                const matchName = std.name.toLowerCase().includes(nameFilter);
+                const matchClass = (std.class || '').toLowerCase().includes(classFilter);
+                const matchSubject = subjectFilter === "" || (std.subject === subjectFilter);
+                return matchName && matchClass && matchSubject;
+            });
+
+            if(students.length === 0) {
+                alert("Tidak ada data untuk didownload.");
+                return;
+            }
+
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // Tambahkan BOM agar Excel membaca karakter khusus dengan benar
+            csvContent += "ID,Nama Siswa,Kelas,Mata Pelajaran,Status,Pelanggaran,Waktu Terakhir\n";
+
+            students.forEach(std => {
+                let row = [
+                    std.id,
+                    `"${std.name}"`,
+                    `"${std.class || '-'}"`,
+                    `"${std.subject || '-'}"`,
+                    `"${std.status}"`,
+                    std.violations,
+                    `"${std.lastLog}"`
+                ];
+                csvContent += row.join(",") + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Monitoring_Excambro_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         }
 
         // --- SUBJECT MANAGEMENT LOGIC (Dasbor Pengawas) ---
@@ -991,6 +1206,7 @@
             const db = getSubjectsDB();
             db[subject] = { url: url, active: isActive };
             localStorage.setItem(SUBJECTS_DB_KEY, JSON.stringify(db));
+            syncToBackend();
 
             // Generate QR Code update
             document.getElementById('generated-qr').src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
@@ -1003,8 +1219,11 @@
             alert(`Pengaturan ${subject} berhasil disimpan!`);
         }
 
-        // Initialize: Switch to role view on load
-        switchView('view-role');
+        // Initialize: Switch to role view on load and fetch from DB
+        window.onload = () => {
+            fetchFromBackend();
+            switchView('view-role');
+        };
 
     </script>
 </body>
