@@ -6,6 +6,8 @@
     <title>Excambro Secure Browser</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Tambahan Library Kamera & QR Scanner -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         /* Mencegah seleksi teks dan interaksi default untuk simulasi Kiosk */
         .kiosk-mode {
@@ -36,6 +38,23 @@
             background-color: #10B981;
             position: absolute;
             animation: scan 2s infinite linear;
+        }
+
+        /* Tambahan styling agar video kamera dari library tidak merusak layout dan terpusat */
+        #qr-reader { 
+            border: none !important; 
+            width: 100% !important;
+            height: 100% !important;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        #qr-reader video {
+            object-fit: cover;
+            border-radius: 1rem;
+            width: 100% !important;
+            height: 100% !important;
         }
     </style>
 </head>
@@ -86,35 +105,30 @@
         </div>
     </div>
 
-    <!-- VIEW 2: STUDENT LOGIN & SCANNER -->
-    <div id="view-student-login" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-800 text-white">
-        <button onclick="switchView('view-role')" class="absolute top-6 left-6 text-slate-300 hover:text-white">
+    <!-- VIEW 2: STUDENT LOGIN & SCANNER (DIPERBARUI UNTUK KAMERA ASLI) -->
+    <div id="view-student-login" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-800 text-white relative">
+        <button onclick="stopScannerAndGoBack()" class="absolute top-6 left-6 text-slate-300 hover:text-white">
             <i class="fas fa-arrow-left text-xl"></i>
         </button>
-        <div class="w-full max-w-sm text-center">
+        <div class="w-full max-w-sm mx-auto flex flex-col items-center text-center">
             <h2 class="text-2xl font-bold mb-6">Scan QR Ujian</h2>
             
-            <!-- Simulasi Kamera -->
-            <div class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border-4 border-slate-600 mb-6 shadow-2xl">
-                <div class="absolute inset-0 flex items-center justify-center opacity-30">
-                    <i class="fas fa-qrcode text-9xl text-white"></i>
+            <!-- Tempat Kamera Asli -->
+            <div id="qr-reader-container" class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden border-4 border-slate-600 mb-6 shadow-2xl flex items-center justify-center mx-auto">
+                <div id="qr-reader" class="w-full h-full absolute inset-0 z-0"></div>
+                <div id="camera-placeholder" class="absolute inset-0 flex flex-col items-center justify-center opacity-50 bg-slate-900 z-10 pointer-events-none">
+                    <i class="fas fa-qrcode text-6xl text-white mb-2"></i>
+                    <p class="text-xs">Kamera siap diaktifkan</p>
                 </div>
-                <!-- Garis scan -->
-                <div class="scanner-line shadow-[0_0_15px_#10B981]"></div>
-                <!-- Target corners -->
-                <div class="absolute top-4 left-4 w-8 h-8 border-t-4 border-l-4 border-green-500 rounded-tl"></div>
-                <div class="absolute top-4 right-4 w-8 h-8 border-t-4 border-r-4 border-green-500 rounded-tr"></div>
-                <div class="absolute bottom-4 left-4 w-8 h-8 border-b-4 border-l-4 border-green-500 rounded-bl"></div>
-                <div class="absolute bottom-4 right-4 w-8 h-8 border-b-4 border-r-4 border-green-500 rounded-br"></div>
             </div>
 
-            <p class="text-sm text-slate-400 mb-6">Arahkan kamera ke QR Code yang diberikan oleh pengawas.</p>
+            <p id="scan-instruction" class="text-sm text-slate-400 mb-6">Masukkan nama Anda lalu aktifkan kamera.</p>
 
-            <!-- Input Nama (karena kita tidak pakai auth login di prototipe ini) -->
-            <input type="text" id="student-name" placeholder="Masukkan Nama Lengkap" class="w-full p-4 rounded-xl bg-slate-700 text-white border border-slate-600 mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+            <!-- Input Nama -->
+            <input type="text" id="student-name" placeholder="Masukkan Nama Lengkap" class="w-full p-4 rounded-xl bg-slate-700 text-white border border-slate-600 mb-4 focus:ring-2 focus:ring-blue-500 outline-none text-center">
 
-            <button onclick="simulateScan()" class="w-full bg-green-500 hover:bg-green-600 text-white p-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2">
-                <i class="fas fa-camera"></i> Simulasi Scan Sukses
+            <button id="btn-start-scan" onclick="startRealScanner()" class="w-full bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2">
+                <i class="fas fa-camera"></i> Aktifkan Kamera & Scan
             </button>
         </div>
     </div>
@@ -293,6 +307,7 @@
         let examTimer = 0;
         let timerInterval = null;
         let isFocusLost = false;
+        let html5QrCode = null; // Tambahan untuk menyimpan instance scanner
 
         // Kunci local storage untuk simulasi database realtime
         const DB_KEY = 'excambro_students_db';
@@ -303,23 +318,71 @@
             document.getElementById(viewId).classList.remove('hidden');
         }
 
-        // --- STUDENT FLOW ---
-        function simulateScan() {
+        function stopScannerAndGoBack() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                }).catch(err => console.error("Gagal menghentikan scanner", err));
+            }
+            // Kembalikan UI scanner ke awal
+            document.getElementById('camera-placeholder').classList.remove('hidden');
+            document.getElementById('btn-start-scan').classList.remove('hidden');
+            document.getElementById('student-name').classList.remove('hidden');
+            document.getElementById('scan-instruction').innerText = "Masukkan nama Anda lalu aktifkan kamera.";
+            
+            switchView('view-role');
+        }
+
+        // --- STUDENT FLOW (DIPERBARUI) ---
+        function startRealScanner() {
             const nameInput = document.getElementById('student-name').value.trim();
             if (!nameInput) {
-                alert("Silakan masukkan nama untuk simulasi.");
+                alert("Silakan masukkan nama terlebih dahulu.");
                 return;
             }
+
+            // Sembunyikan form nama & tombol, tampilkan live camera
+            document.getElementById('camera-placeholder').classList.add('hidden');
+            document.getElementById('btn-start-scan').classList.add('hidden');
+            document.getElementById('student-name').classList.add('hidden');
+            document.getElementById('scan-instruction').innerText = "Arahkan kamera ke QR Code. Pastikan izin kamera diberikan saat diminta browser.";
+
+            // Inisialisasi Kamera Belakang (Environment Camera)
+            html5QrCode = new Html5Qrcode("qr-reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 250 } };
             
-            // Buat ID unik untuk sesi
-            currentStudentId = 'STD-' + Math.floor(1000 + Math.random() * 9000);
-            document.getElementById('display-student-name').innerText = nameInput;
-            
-            // Daftarkan ke "Database"
-            updateStudentStatus(currentStudentId, nameInput, 'Menunggu', 0);
-            
-            switchView('view-system-check');
-            runSystemCheck();
+            html5QrCode.start({ facingMode: "environment" }, config, 
+                (decodedText, decodedResult) => {
+                    // KETIKA QR BERHASIL DISCAN:
+                    
+                    // 1. Matikan kamera
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        html5QrCode = null;
+                    });
+
+                    // 2. Lanjutkan alur siswa
+                    currentStudentId = 'STD-' + Math.floor(1000 + Math.random() * 9000);
+                    document.getElementById('display-student-name').innerText = nameInput;
+                    
+                    updateStudentStatus(currentStudentId, nameInput, 'Menunggu', 0);
+                    
+                    // OPSIONAL: Jika QR yang discan berisi link Google Form, Anda bisa 
+                    // mengganti src iFrame agar otomatis menuju form tersebut:
+                    // document.getElementById('exam-iframe').src = decodedText;
+                    
+                    switchView('view-system-check');
+                    runSystemCheck();
+                },
+                (errorMessage) => {
+                    // Abaikan pesan error saat belum ada QR yang terdeteksi
+                }
+            ).catch((err) => {
+                console.error(err);
+                alert("Kamera tidak dapat diakses. Pastikan browser memiliki izin kamera.");
+                stopScannerAndGoBack();
+            });
         }
 
         function runSystemCheck() {
