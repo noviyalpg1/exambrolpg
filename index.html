@@ -58,7 +58,7 @@
         }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans h-screen w-screen overflow-hidden flex flex-col kiosk-mode">
+<body class="bg-slate-50 text-slate-800 font-sans fixed inset-0 overflow-hidden flex flex-col kiosk-mode">
 
     <!-- OVERLAY PERINGATAN (Anti-Cheat) -->
     <div id="warning-overlay" class="fixed inset-0 z-[100] hidden flex-col items-center justify-center bg-red-600 text-white p-6 text-center">
@@ -106,7 +106,7 @@
     </div>
 
     <!-- VIEW 2: STUDENT LOGIN (DIPERBARUI DENGAN PILIHAN DROPDOWN/QR & KELAS) -->
-    <div id="view-student-login" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-800 text-white relative overflow-y-auto">
+    <div id="view-student-login" class="hidden flex flex-1 flex-col items-center justify-center p-6 bg-slate-800 text-white relative overflow-y-auto">
         <button onclick="stopScannerAndGoBack()" class="absolute top-6 left-6 text-slate-300 hover:text-white z-50">
             <i class="fas fa-arrow-left text-xl"></i>
         </button>
@@ -169,7 +169,7 @@
     </div>
 
     <!-- VIEW 3: SYSTEM CHECK (Proteksi Tambahan) -->
-    <div id="view-system-check" class="hidden flex-1 flex-col items-center justify-center p-6 bg-slate-900 text-white">
+    <div id="view-system-check" class="hidden flex flex-1 flex-col items-center justify-center p-6 bg-slate-900 text-white">
         <div class="w-full max-w-md bg-slate-800 p-8 rounded-2xl border border-slate-700">
             <h2 class="text-xl font-bold mb-6 flex items-center gap-2">
                 <i class="fas fa-shield-check text-blue-400"></i> Pengecekan Keamanan Sistem
@@ -205,7 +205,7 @@
     </div>
 
     <!-- VIEW 4: SECURE EXAM BROWSER -->
-    <div id="view-exam" class="hidden flex-1 flex-col h-full bg-white relative">
+    <div id="view-exam" class="hidden flex flex-1 flex-col w-full h-full bg-white relative">
         <!-- App Bar / Header -->
         <header class="bg-blue-900 text-white p-3 flex justify-between items-center shadow-md select-none">
             <div class="flex items-center gap-3">
@@ -234,7 +234,7 @@
         </header>
 
         <!-- WebView / Iframe Container -->
-        <div class="flex-1 bg-gray-200 relative overflow-hidden">
+        <div class="flex-1 w-full bg-gray-200 relative overflow-hidden">
             <!-- Peringatan overlay kecil saat kursor keluar -->
             <div id="focus-warning" class="absolute top-0 left-0 w-full bg-red-500 text-white text-center py-1 text-xs font-bold hidden z-50">
                 Fokus hilang! Jangan pindah aplikasi.
@@ -244,7 +244,7 @@
             <!-- Menggunakan public form google untuk simulasi real -->
             <iframe 
                 src="https://docs.google.com/forms/d/e/1FAIpQLSd9O-DofR6tS2zQd7A-2_G4lMlwzE1Q0rT_fJ6O1D0gE7R3qw/viewform?embedded=true" 
-                class="w-full h-full border-0"
+                class="absolute inset-0 w-full h-full border-0"
                 id="exam-iframe"
                 title="Google Form Ujian">
             </iframe>
@@ -252,7 +252,7 @@
     </div>
 
     <!-- VIEW 5: TEACHER DASHBOARD -->
-    <div id="view-teacher" class="hidden flex-1 flex-col h-full bg-slate-50">
+    <div id="view-teacher" class="hidden flex flex-1 flex-col w-full h-full bg-slate-50">
         <header class="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md">
             <div class="flex items-center gap-3">
                 <i class="fas fa-chalkboard-teacher text-2xl text-blue-400"></i>
@@ -407,6 +407,31 @@
         const DB_KEY = 'excambro_students_db';
         const SUBJECTS_DB_KEY = 'excambro_subjects_db';
 
+        // --- HELPER SCANNER (Mencegah Error Stop) ---
+        function stopAndClearScanner(callback) {
+            if (html5QrCode) {
+                // Pastikan library memiliki status scanning (isScanning) sebelum mencoba stop
+                if (html5QrCode.isScanning) {
+                    html5QrCode.stop().then(() => {
+                        html5QrCode.clear();
+                        html5QrCode = null;
+                        if(callback) callback();
+                    }).catch(e => {
+                        console.log("Scanner stop error:", e);
+                        html5QrCode.clear();
+                        html5QrCode = null;
+                        if(callback) callback();
+                    });
+                } else {
+                    html5QrCode.clear();
+                    html5QrCode = null;
+                    if(callback) callback();
+                }
+            } else {
+                if(callback) callback();
+            }
+        }
+
         // --- NAVIGATION & UI ---
         function switchView(viewId) {
             document.querySelectorAll('body > div[id^="view-"]').forEach(el => el.classList.add('hidden'));
@@ -440,14 +465,10 @@
                 divQr.classList.add('hidden');
                 
                 // Matikan kamera jika pindah ke mode dropdown
-                if (html5QrCode) {
-                    html5QrCode.stop().then(() => {
-                        html5QrCode.clear();
-                        html5QrCode = null;
-                        document.getElementById('camera-placeholder').classList.remove('hidden');
-                        document.getElementById('btn-start-scan').classList.remove('hidden');
-                    }).catch(e => console.log(e));
-                }
+                stopAndClearScanner(() => {
+                    document.getElementById('camera-placeholder').classList.remove('hidden');
+                    document.getElementById('btn-start-scan').classList.remove('hidden');
+                });
             } else {
                 btnQr.className = "flex-1 py-2.5 text-sm font-bold rounded-lg bg-blue-600 text-white shadow transition";
                 btnDropdown.className = "flex-1 py-2.5 text-sm font-bold rounded-lg text-slate-400 hover:text-white transition";
@@ -458,17 +479,12 @@
         }
 
         function stopScannerAndGoBack() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    html5QrCode.clear();
-                    html5QrCode = null;
-                }).catch(err => console.error(err));
-            }
-            // Reset tampilan kamera scanner
-            document.getElementById('camera-placeholder').classList.remove('hidden');
-            document.getElementById('btn-start-scan').classList.remove('hidden');
-            
-            switchView('view-role');
+            stopAndClearScanner(() => {
+                // Reset tampilan kamera scanner
+                document.getElementById('camera-placeholder').classList.remove('hidden');
+                document.getElementById('btn-start-scan').classList.remove('hidden');
+                switchView('view-role');
+            });
         }
 
         // --- STUDENT LOGIN FLOW ---
@@ -505,6 +521,29 @@
             }
         }
 
+        // --- FUNGSI FULLSCREEN ---
+        async function triggerFullscreen() {
+            try {
+                // Mencegah error jika layar sudah berada di mode fullscreen
+                if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+                    return; 
+                }
+
+                const elem = document.documentElement;
+                if (elem.requestFullscreen) {
+                    await elem.requestFullscreen();
+                } else if (elem.webkitRequestFullscreen) { /* Safari / Chrome iOS */
+                    await elem.webkitRequestFullscreen();
+                } else if (elem.msRequestFullscreen) { /* IE11 / Edge lama */
+                    await elem.msRequestFullscreen();
+                } else if (elem.mozRequestFullScreen) { /* Firefox */
+                    await elem.mozRequestFullScreen();
+                }
+            } catch (e) {
+                console.log("Fullscreen otomatis ditolak browser, namun ujian tetap dilanjutkan.");
+            }
+        }
+
         // Opsi 1: Mulai via Dropdown Pilihan
         function startViaDropdown() {
             if (!validateStudentIdentity()) return;
@@ -515,12 +554,15 @@
                 return;
             }
 
+            triggerFullscreen(); // Panggil fullscreen langsung saat diklik
             prepareExamSession(url);
         }
 
         // Opsi 2: Mulai via QR Scan
         function startRealScanner() {
             if (!validateStudentIdentity()) return;
+
+            triggerFullscreen(); // Panggil fullscreen langsung saat diklik kamera
 
             document.getElementById('camera-placeholder').classList.add('hidden');
             document.getElementById('btn-start-scan').classList.add('hidden');
@@ -531,17 +573,15 @@
             
             html5QrCode.start({ facingMode: { ideal: "environment" } }, config, 
                 (decodedText, decodedResult) => {
-                    html5QrCode.stop().then(() => {
-                        html5QrCode.clear();
-                        html5QrCode = null;
+                    // Ketika scan berhasil
+                    stopAndClearScanner(() => {
+                        if(decodedText.startsWith('http')) {
+                            prepareExamSession(decodedText);
+                        } else {
+                            alert("QR Code tidak valid. Harus berisi Link URL.");
+                            stopScannerAndGoBack();
+                        }
                     });
-
-                    if(decodedText.startsWith('http')) {
-                        prepareExamSession(decodedText);
-                    } else {
-                        alert("QR Code tidak valid. Harus berisi Link URL.");
-                        stopScannerAndGoBack();
-                    }
                 },
                 (errorMessage) => {}
             ).catch((err) => {
@@ -593,20 +633,7 @@
         }
 
         async function enterExamMode() {
-            try {
-                const elem = document.documentElement;
-                if (elem.requestFullscreen) {
-                    await elem.requestFullscreen();
-                } else if (elem.webkitRequestFullscreen) { /* Safari / Chrome iOS */
-                    await elem.webkitRequestFullscreen();
-                } else if (elem.msRequestFullscreen) { /* IE11 / Edge lama */
-                    await elem.msRequestFullscreen();
-                } else if (elem.mozRequestFullScreen) { /* Firefox */
-                    await elem.mozRequestFullScreen();
-                }
-            } catch (e) {
-                console.log("Fullscreen otomatis ditolak browser, namun ujian tetap dilanjutkan.");
-            }
+            triggerFullscreen(); // Panggil lagi untuk memastikan tetap fullscreen saat masuk Kiosk
 
             switchView('view-exam');
             isExamActive = true;
